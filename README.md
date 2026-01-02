@@ -114,4 +114,8 @@ içerir ve Streamlit UI üzerinden görüntülenebilir.
 Notlar
 Proje demo amaçlıdır.
 Gerçek sistemlerde TimescaleDB / InfluxDB gibi zaman serisi veritabanları tercih edilebilir.
+<<<<<<< HEAD
 Geliştirmeye açıktır.
+=======
+Geliştirmeye açıktır.
+>>>>>>> bb9bf8d (Add ingestion pipeline code)
