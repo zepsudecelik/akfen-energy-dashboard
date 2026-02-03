@@ -23,5 +23,8 @@ db/
 *.sqlite
 *.db
 
+# Deprecated/backup files
+backup/
+
 # IDE
 .vscode/

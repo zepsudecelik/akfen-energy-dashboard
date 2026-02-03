@@ -1,0 +1,140 @@
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  padding: 2rem;
+}
+
+.login-card {
+  background: #1e293b;
+  border-radius: 16px;
+  padding: 3rem;
+  width: 100%;
+  max-width: 450px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  border: 1px solid #334155;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.login-icon {
+  color: #4ade80;
+  margin-bottom: 1rem;
+}
+
+.login-header h1 {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.login-header p {
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: #0f172a;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  transition: all 0.3s ease;
+}
+
+.form-group:focus-within {
+  border-color: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.1);
+}
+
+.form-group svg {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.form-group input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: #f1f5f9;
+  font-size: 1rem;
+}
+
+.form-group input::placeholder {
+  color: #64748b;
+}
+
+.error-message {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid #f87171;
+  color: #f87171;
+  padding: 0.75rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.login-button {
+  background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+  color: #0f172a;
+  border: none;
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.login-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(74, 222, 128, 0.3);
+}
+
+.login-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toggle-mode {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.toggle-button {
+  background: none;
+  border: none;
+  color: #4ade80;
+  cursor: pointer;
+  margin-left: 0.5rem;
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+
+.toggle-button:hover {
+  color: #22c55e;
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .login-card {
+    padding: 2rem;
+  }
+}

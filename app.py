@@ -8,7 +8,7 @@ from pathlib import Path
 from storage.pg_store import fetch_series
 
 
-st.title("Akfen Ingestion Demo (SQLite)")
+st.title("Akfen Ingestion Demo (PostgreSQL)")
 REPORT_PATH = Path("reports/data_validation_report.json")
 
 
