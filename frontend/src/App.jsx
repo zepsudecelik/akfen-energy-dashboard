@@ -7,12 +7,11 @@ import { Activity, Zap, TrendingUp, AlertTriangle, Bell, X } from 'lucide-react'
 import './App.css'
 import Login from './login.jsx'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'function App() {
-  // Auth state
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
-  
-  // Data state
   const [stats, setStats] = useState(null)
   const [hourlyData, setHourlyData] = useState([])
   const [dailyData, setDailyData] = useState([])
@@ -21,7 +20,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'funct
   const [alerts, setAlerts] = useState([])
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
 
-  // Auth kontrolü
   useEffect(() => {
     const token = localStorage.getItem('token')
     if (token) {
@@ -64,7 +62,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'funct
     setCurrentUser(null)
   }
 
-  // Data fetching
   useEffect(() => {
     if (isAuthenticated) {
       fetchData()
@@ -73,7 +70,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'funct
     }
   }, [isAuthenticated])
 
-  // Browser notification izni
   useEffect(() => {
     if ('Notification' in window) {
       if (Notification.permission === 'granted') {
@@ -203,7 +199,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'funct
     setAlerts(prev => prev.filter(a => a.id !== alertId))
   }
 
-  // Giriş yapılmadıysa Login göster
   if (!isAuthenticated) {
     return <Login onLogin={handleLogin} />
   }
