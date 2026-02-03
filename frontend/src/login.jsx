@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Lock, Mail, User, Zap } from 'lucide-react'
-import './Login.css'
+import './login.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 function Login({ onLogin }) {
