@@ -7,8 +7,7 @@ import { Activity, Zap, TrendingUp, AlertTriangle, Bell, X } from 'lucide-react'
 import './App.css'
 import Login from './login.jsx'
 
-const API_URL = 'https://apathetically-oversaucy-antonina.ngrok-free.dev/api'
-function App() {
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'function App() {
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)

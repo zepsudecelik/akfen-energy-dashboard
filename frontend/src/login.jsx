@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { Lock, Mail, User, Zap } from 'lucide-react'
 import './Login.css'
 
-const API_URL = 'https://apathetically-oversaucy-antonina.ngrok-free.dev/api'
-function Login({ onLogin }) {
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'function Login({ onLogin }) {
   const [isRegister, setIsRegister] = useState(false)
   const [formData, setFormData] = useState({
     email: '',
