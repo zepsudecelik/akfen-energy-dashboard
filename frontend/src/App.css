@@ -1,3 +1,5 @@
+/* Modern Dark Theme for Energy Dashboard */
+
 * {
   margin: 0;
   padding: 0;
@@ -5,7 +7,11 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   background: #0f172a;
   color: #f1f5f9;
 }
@@ -17,6 +23,7 @@ body {
   margin: 0 auto;
 }
 
+/* Header */
 .header {
   background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
   padding: 2rem;
@@ -37,8 +44,44 @@ body {
   background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
+/* Navigation */
+.nav-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: 2rem;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: transparent;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 0.875rem;
+}
+
+.nav-btn:hover {
+  background: rgba(74, 222, 128, 0.1);
+  color: #4ade80;
+  border-color: #4ade80;
+}
+
+.nav-btn.active {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+  border-color: #4ade80;
+  font-weight: 600;
+}
+
+/* Stats Grid */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -55,6 +98,7 @@ body {
   gap: 1rem;
   border: 1px solid #334155;
   transition: all 0.3s ease;
+  position: relative;
 }
 
 .stat-card:hover {
@@ -84,6 +128,7 @@ body {
   font-weight: 700;
 }
 
+/* Charts Grid */
 .charts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
@@ -104,6 +149,11 @@ body {
   color: #f1f5f9;
 }
 
+/* Anomalies Table */
+.anomalies-table {
+  overflow-x: auto;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -120,6 +170,7 @@ th {
   color: #94a3b8;
   font-size: 0.875rem;
   text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 td {
@@ -131,6 +182,7 @@ tbody tr:hover {
   background: #334155;
 }
 
+/* Badge */
 .badge {
   padding: 0.25rem 0.75rem;
   border-radius: 9999px;
@@ -149,6 +201,12 @@ tbody tr:hover {
   color: #f87171;
 }
 
+.badge-normal {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+}
+
+/* Loading */
 .loading {
   min-height: 100vh;
   display: flex;
@@ -164,17 +222,22 @@ tbody tr:hover {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-@media (max-width: 768px) {
-  .dashboard {
-    padding: 1rem;
-  }
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
+/* Footer */
+.footer {
+  text-align: center;
+  padding: 2rem;
+  color: #64748b;
+  font-size: 0.875rem;
+  border-top: 1px solid #334155;
+  margin-top: 2rem;
 }
 
 /* Alert System Styles */
@@ -356,6 +419,61 @@ tbody tr:hover {
   }
 }
 
-.stat-card {
-  position: relative;
+/* Auth Styles */
+.user-name {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.logout-btn {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid #f87171;
+  color: #f87171;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.logout-btn:hover {
+  background: rgba(248, 113, 113, 0.2);
+  transform: scale(1.05);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dashboard {
+    padding: 1rem;
+  }
+
+  .header h1 {
+    font-size: 1.5rem;
+  }
+
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nav-buttons {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .header-content {
+    flex-wrap: wrap;
+  }
+}
+
+/* Recharts Custom Styling */
+.recharts-tooltip-wrapper {
+  outline: none;
+}
+
+.recharts-legend-wrapper {
+  padding-top: 1rem !important;
 }

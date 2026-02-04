@@ -317,6 +317,281 @@ def get_anomalies(
     finally:
         conn.close()
 
+# =========================
+# REPORTING ENDPOINTS
+# =========================
+
+from datetime import datetime, timedelta
+
+@app.get("/api/reports/summary")
+def get_report_summary(
+    plant_id: str = "AKFEN_MAHSUP",
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    period: str = Query("weekly", description="weekly, monthly, or custom")
+):
+    """
+    Generate comprehensive report summary
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            # Determine date range
+            if period == "weekly":
+                end = datetime.now()
+                start = end - timedelta(days=7)
+            elif period == "monthly":
+                end = datetime.now()
+                start = end - timedelta(days=30)
+            else:  # custom
+                if not start_date or not end_date:
+                    raise HTTPException(status_code=400, detail="start_date and end_date required for custom period")
+                start = datetime.fromisoformat(start_date)
+                end = datetime.fromisoformat(end_date)
+            
+            # Overall statistics
+            cur.execute("""
+                SELECT 
+                    COUNT(*) as total_records,
+                    SUM(value) as total_production,
+                    AVG(value) as avg_production,
+                    MAX(value) as max_production,
+                    MIN(value) as min_production,
+                    COUNT(CASE WHEN quality_flag = 'outlier' THEN 1 END) as outliers,
+                    COUNT(CASE WHEN quality_flag = 'negative' THEN 1 END) as negatives
+                FROM measurements
+                WHERE plant_id = %s
+                  AND timestamp BETWEEN %s AND %s
+            """, (plant_id, start, end))
+            
+            row = cur.fetchone()
+            
+            # Daily breakdown
+            cur.execute("""
+                SELECT 
+                    DATE(timestamp) as day,
+                    SUM(value) as daily_total,
+                    AVG(value) as daily_avg,
+                    MAX(value) as daily_max,
+                    COUNT(*) as data_points
+                FROM measurements
+                WHERE plant_id = %s
+                  AND timestamp BETWEEN %s AND %s
+                GROUP BY DATE(timestamp)
+                ORDER BY day ASC
+            """, (plant_id, start, end))
+            
+            daily_breakdown = []
+            for r in cur.fetchall():
+                daily_breakdown.append({
+                    "date": r[0].isoformat(),
+                    "total": float(r[1] or 0),
+                    "average": float(r[2] or 0),
+                    "max": float(r[3] or 0),
+                    "data_points": int(r[4])
+                })
+            
+            # Hourly pattern (average by hour of day)
+            cur.execute("""
+                SELECT 
+                    EXTRACT(HOUR FROM timestamp) as hour,
+                    AVG(value) as avg_production
+                FROM measurements
+                WHERE plant_id = %s
+                  AND timestamp BETWEEN %s AND %s
+                GROUP BY EXTRACT(HOUR FROM timestamp)
+                ORDER BY hour ASC
+            """, (plant_id, start, end))
+            
+            hourly_pattern = []
+            for r in cur.fetchall():
+                hourly_pattern.append({
+                    "hour": int(r[0]),
+                    "average": float(r[1] or 0)
+                })
+            
+            # Peak production day
+            cur.execute("""
+                SELECT 
+                    DATE(timestamp) as day,
+                    SUM(value) as daily_total
+                FROM measurements
+                WHERE plant_id = %s
+                  AND timestamp BETWEEN %s AND %s
+                GROUP BY DATE(timestamp)
+                ORDER BY daily_total DESC
+                LIMIT 1
+            """, (plant_id, start, end))
+            
+            peak_day = cur.fetchone()
+            
+            return {
+                "period": {
+                    "type": period,
+                    "start": start.isoformat(),
+                    "end": end.isoformat(),
+                    "days": (end - start).days
+                },
+                "summary": {
+                    "total_records": int(row[0]),
+                    "total_production_kwh": float(row[1] or 0),
+                    "total_production_mwh": float(row[1] or 0) / 1000,
+                    "average_production": float(row[2] or 0),
+                    "max_production": float(row[3] or 0),
+                    "min_production": float(row[4] or 0),
+                    "outliers_count": int(row[5]),
+                    "negatives_count": int(row[6]),
+                    "data_quality": (1 - (int(row[5]) + int(row[6])) / int(row[0])) * 100 if row[0] > 0 else 100
+                },
+                "peak_day": {
+                    "date": peak_day[0].isoformat() if peak_day else None,
+                    "production": float(peak_day[1]) if peak_day else 0
+                },
+                "daily_breakdown": daily_breakdown,
+                "hourly_pattern": hourly_pattern
+            }
+    finally:
+        conn.close()
+
+
+@app.get("/api/reports/comparison")
+def get_comparison_report(
+    plant_id: str = "AKFEN_MAHSUP",
+    period1_start: str = Query(..., description="Period 1 start date"),
+    period1_end: str = Query(..., description="Period 1 end date"),
+    period2_start: str = Query(..., description="Period 2 start date"),
+    period2_end: str = Query(..., description="Period 2 end date")
+):
+    """
+    Compare two time periods
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            # Period 1 stats
+            cur.execute("""
+                SELECT 
+                    SUM(value) as total,
+                    AVG(value) as avg,
+                    MAX(value) as max,
+                    COUNT(*) as records
+                FROM measurements
+                WHERE plant_id = %s
+                  AND timestamp BETWEEN %s AND %s
+            """, (plant_id, period1_start, period1_end))
+            
+            p1 = cur.fetchone()
+            
+            # Period 2 stats
+            cur.execute("""
+                SELECT 
+                    SUM(value) as total,
+                    AVG(value) as avg,
+                    MAX(value) as max,
+                    COUNT(*) as records
+                FROM measurements
+                WHERE plant_id = %s
+                  AND timestamp BETWEEN %s AND %s
+            """, (plant_id, period2_start, period2_end))
+            
+            p2 = cur.fetchone()
+            
+            # Calculate changes
+            total_change = ((p2[0] - p1[0]) / p1[0] * 100) if p1[0] > 0 else 0
+            avg_change = ((p2[1] - p1[1]) / p1[1] * 100) if p1[1] > 0 else 0
+            
+            return {
+                "period1": {
+                    "start": period1_start,
+                    "end": period1_end,
+                    "total_production": float(p1[0] or 0),
+                    "average_production": float(p1[1] or 0),
+                    "max_production": float(p1[2] or 0),
+                    "records": int(p1[3])
+                },
+                "period2": {
+                    "start": period2_start,
+                    "end": period2_end,
+                    "total_production": float(p2[0] or 0),
+                    "average_production": float(p2[1] or 0),
+                    "max_production": float(p2[2] or 0),
+                    "records": int(p2[3])
+                },
+                "comparison": {
+                    "total_change_percent": round(total_change, 2),
+                    "average_change_percent": round(avg_change, 2),
+                    "trend": "increase" if total_change > 0 else "decrease" if total_change < 0 else "stable"
+                }
+            }
+    finally:
+        conn.close()
+
+
+@app.get("/api/reports/performance-metrics")
+def get_performance_metrics(
+    plant_id: str = "AKFEN_MAHSUP",
+    days: int = Query(default=30, le=365)
+):
+    """
+    Get performance metrics and trends
+    """
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            # Weekly performance over time
+            cur.execute("""
+                SELECT 
+                    DATE_TRUNC('week', timestamp) as week,
+                    SUM(value) as weekly_total,
+                    AVG(value) as weekly_avg,
+                    COUNT(*) as data_points
+                FROM measurements
+                WHERE plant_id = %s
+                  AND timestamp >= NOW() - INTERVAL '%s days'
+                GROUP BY DATE_TRUNC('week', timestamp)
+                ORDER BY week ASC
+            """, (plant_id, days))
+            
+            weekly_trend = []
+            for row in cur.fetchall():
+                weekly_trend.append({
+                    "week": row[0].isoformat(),
+                    "total": float(row[1] or 0),
+                    "average": float(row[2] or 0),
+                    "data_points": int(row[3])
+                })
+            
+            # Capacity factor (assuming 1 MW capacity)
+            cur.execute("""
+                SELECT 
+                    SUM(value) as total_production,
+                    COUNT(DISTINCT DATE(timestamp)) as days_operated
+                FROM measurements
+                WHERE plant_id = %s
+                  AND timestamp >= NOW() - INTERVAL '%s days'
+            """, (plant_id, days))
+            
+            row = cur.fetchone()
+            total_production = float(row[0] or 0)
+            days_operated = int(row[1])
+            
+            # Assuming 1000 kW capacity
+            theoretical_max = 1000 * 24 * days_operated  # kWh
+            capacity_factor = (total_production / theoretical_max * 100) if theoretical_max > 0 else 0
+            
+            return {
+                "period_days": days,
+                "weekly_trend": weekly_trend,
+                "performance": {
+                    "capacity_factor": round(capacity_factor, 2),
+                    "total_production_kwh": total_production,
+                    "days_operated": days_operated,
+                    "average_daily_production": total_production / days_operated if days_operated > 0 else 0
+                }
+            }
+    finally:
+        conn.close()
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)  # 0.0.0.0 = tüm network

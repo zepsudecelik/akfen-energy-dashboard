@@ -3,15 +3,17 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer 
 } from 'recharts'
-import { Activity, Zap, TrendingUp, AlertTriangle, Bell, X } from 'lucide-react'
+import { Activity, Zap, TrendingUp, AlertTriangle, Bell, X, LayoutDashboard, FileBarChart } from 'lucide-react'
 import './App.css'
 import Login from './login.jsx'
+import Reports from './Reports.jsx'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_URL = 'http://localhost:8000/api';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
+  const [currentPage, setCurrentPage] = useState('dashboard')
   const [stats, setStats] = useState(null)
   const [hourlyData, setHourlyData] = useState([])
   const [dailyData, setDailyData] = useState([])
@@ -218,6 +220,24 @@ function App() {
         <div className="header-content">
           <Zap size={32} />
           <h1>Akfen Enerji İzleme Sistemi</h1>
+          
+          <div className="nav-buttons">
+            <button 
+              className={`nav-btn ${currentPage === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('dashboard')}
+            >
+              <LayoutDashboard size={20} />
+              Dashboard
+            </button>
+            <button 
+              className={`nav-btn ${currentPage === 'reports' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('reports')}
+            >
+              <FileBarChart size={20} />
+              Raporlar
+            </button>
+          </div>
+
           {currentUser && <span className="user-name">Hoşgeldin, {currentUser.full_name}</span>}
           <button 
             className={`notification-btn ${notificationsEnabled ? 'enabled' : ''}`}
@@ -233,144 +253,150 @@ function App() {
         </div>
       </header>
 
-      {alerts.length > 0 && (
-        <div className="alerts-container">
-          {alerts.map(alert => (
-            <div key={alert.id} className={`alert alert-${alert.type}`}>
-              <div className="alert-content">
-                <AlertTriangle size={20} />
-                <div>
-                  <h4>{alert.title}</h4>
-                  <p>{alert.message}</p>
-                  <span className="alert-time">
-                    {new Date(alert.timestamp).toLocaleTimeString('tr-TR')}
-                  </span>
+      {currentPage === 'dashboard' ? (
+        <>
+          {alerts.length > 0 && (
+            <div className="alerts-container">
+              {alerts.map(alert => (
+                <div key={alert.id} className={`alert alert-${alert.type}`}>
+                  <div className="alert-content">
+                    <AlertTriangle size={20} />
+                    <div>
+                      <h4>{alert.title}</h4>
+                      <p>{alert.message}</p>
+                      <span className="alert-time">
+                        {new Date(alert.timestamp).toLocaleTimeString('tr-TR')}
+                      </span>
+                    </div>
+                  </div>
+                  <button 
+                    className="alert-close"
+                    onClick={() => dismissAlert(alert.id)}
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
-              </div>
-              <button 
-                className="alert-close"
-                onClick={() => dismissAlert(alert.id)}
-              >
-                <X size={16} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="stats-grid">
-        <StatCard
-          icon={<Activity size={24} />}
-          title="Toplam Üretim"
-          value={`${(stats.total_production / 1000).toFixed(1)} MWh`}
-          color="#4ade80"
-        />
-        <StatCard
-          icon={<TrendingUp size={24} />}
-          title="Ortalama"
-          value={`${stats.average_production.toFixed(1)} kWh`}
-          color="#60a5fa"
-        />
-        <StatCard
-          icon={<Zap size={24} />}
-          title="Max Üretim"
-          value={`${stats.max_production.toFixed(1)} kWh`}
-          color="#fbbf24"
-        />
-        <StatCard
-          icon={<AlertTriangle size={24} />}
-          title="Anomaliler"
-          value={stats.outliers_count + stats.negatives_count}
-          color="#f87171"
-          alert={stats.outliers_count + stats.negatives_count > 5}
-        />
-      </div>
-
-      <div className="charts-grid">
-        <div className="chart-card">
-          <h2>Saatlik Üretim (Son 7 Gün)</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={hourlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis 
-                dataKey="timestamp" 
-                tickFormatter={(value) => new Date(value).toLocaleDateString('tr-TR', { 
-                  month: 'short', 
-                  day: 'numeric'
-                })}
-                stroke="#9ca3af"
-              />
-              <YAxis stroke="#9ca3af" />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#1f2937', border: 'none' }}
-              />
-              <Legend />
-              <Line 
-                type="monotone" 
-                dataKey="avg" 
-                stroke="#4ade80" 
-                strokeWidth={2}
-                dot={false}
-                name="Ortalama (kWh)"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="chart-card">
-          <h2>Günlük Toplam (Son 30 Gün)</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={dailyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis 
-                dataKey="date" 
-                tickFormatter={(value) => new Date(value).toLocaleDateString('tr-TR', { 
-                  month: 'short', 
-                  day: 'numeric' 
-                })}
-                stroke="#9ca3af"
-              />
-              <YAxis stroke="#9ca3af" />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#1f2937', border: 'none' }}
-              />
-              <Legend />
-              <Bar 
-                dataKey="total" 
-                fill="#60a5fa" 
-                name="Toplam (kWh)"
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {anomalies.length > 0 && (
-        <div className="chart-card">
-          <h2>Son Anomaliler</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Zaman</th>
-                <th>Değer</th>
-                <th>Durum</th>
-              </tr>
-            </thead>
-            <tbody>
-              {anomalies.map((a, idx) => (
-                <tr key={idx}>
-                  <td>{new Date(a.timestamp).toLocaleString('tr-TR')}</td>
-                  <td>{a.value.toFixed(2)} kWh</td>
-                  <td>
-                    <span className={`badge badge-${a.quality_flag}`}>
-                      {a.quality_flag}
-                    </span>
-                  </td>
-                </tr>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )}
+
+          <div className="stats-grid">
+            <StatCard
+              icon={<Activity size={24} />}
+              title="Toplam Üretim"
+              value={`${(stats.total_production / 1000).toFixed(1)} MWh`}
+              color="#4ade80"
+            />
+            <StatCard
+              icon={<TrendingUp size={24} />}
+              title="Ortalama"
+              value={`${stats.average_production.toFixed(1)} kWh`}
+              color="#60a5fa"
+            />
+            <StatCard
+              icon={<Zap size={24} />}
+              title="Max Üretim"
+              value={`${stats.max_production.toFixed(1)} kWh`}
+              color="#fbbf24"
+            />
+            <StatCard
+              icon={<AlertTriangle size={24} />}
+              title="Anomaliler"
+              value={stats.outliers_count + stats.negatives_count}
+              color="#f87171"
+              alert={stats.outliers_count + stats.negatives_count > 5}
+            />
+          </div>
+
+          <div className="charts-grid">
+            <div className="chart-card">
+              <h2>Saatlik Üretim (Son 7 Gün)</h2>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={hourlyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis 
+                    dataKey="timestamp" 
+                    tickFormatter={(value) => new Date(value).toLocaleDateString('tr-TR', { 
+                      month: 'short', 
+                      day: 'numeric'
+                    })}
+                    stroke="#9ca3af"
+                  />
+                  <YAxis stroke="#9ca3af" />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#1f2937', border: 'none' }}
+                  />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="avg" 
+                    stroke="#4ade80" 
+                    strokeWidth={2}
+                    dot={false}
+                    name="Ortalama (kWh)"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="chart-card">
+              <h2>Günlük Toplam (Son 30 Gün)</h2>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={dailyData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis 
+                    dataKey="date" 
+                    tickFormatter={(value) => new Date(value).toLocaleDateString('tr-TR', { 
+                      month: 'short', 
+                      day: 'numeric' 
+                    })}
+                    stroke="#9ca3af"
+                  />
+                  <YAxis stroke="#9ca3af" />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#1f2937', border: 'none' }}
+                  />
+                  <Legend />
+                  <Bar 
+                    dataKey="total" 
+                    fill="#60a5fa" 
+                    name="Toplam (kWh)"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {anomalies.length > 0 && (
+            <div className="chart-card">
+              <h2>Son Anomaliler</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Zaman</th>
+                    <th>Değer</th>
+                    <th>Durum</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {anomalies.map((a, idx) => (
+                    <tr key={idx}>
+                      <td>{new Date(a.timestamp).toLocaleString('tr-TR')}</td>
+                      <td>{a.value.toFixed(2)} kWh</td>
+                      <td>
+                        <span className={`badge badge-${a.quality_flag}`}>
+                          {a.quality_flag}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ) : (
+        <Reports />
       )}
     </div>
   )
