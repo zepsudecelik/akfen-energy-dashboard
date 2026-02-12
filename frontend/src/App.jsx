@@ -3,10 +3,12 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer 
 } from 'recharts'
-import { Activity, Zap, TrendingUp, AlertTriangle, Bell, X, LayoutDashboard, FileBarChart } from 'lucide-react'
+import { Activity, Zap, TrendingUp, AlertTriangle, Bell, X, LayoutDashboard, FileBarChart, Upload } from 'lucide-react'
 import './App.css'
 import Login from './login.jsx'
 import Reports from './Reports.jsx'
+import DataUpload from './DataUpload.jsx'
+import Predictions from './Predictions.jsx'
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -14,12 +16,15 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [currentPage, setCurrentPage] = useState('dashboard')
+  const [selectedPlant, setSelectedPlant] = useState('AKFEN_MAHSUP') 
+  const [plants, setPlants] = useState([])
   const [stats, setStats] = useState(null)
   const [hourlyData, setHourlyData] = useState([])
   const [dailyData, setDailyData] = useState([])
   const [anomalies, setAnomalies] = useState([])
   const [loading, setLoading] = useState(true)
   const [alerts, setAlerts] = useState([])
+  const [shownAlertTypes, setShownAlertTypes] = useState(new Set()) 
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
 
   useEffect(() => {
@@ -62,15 +67,16 @@ function App() {
     localStorage.removeItem('token')
     setIsAuthenticated(false)
     setCurrentUser(null)
+    setCurrentPage('dashboard')
   }
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && currentPage === 'dashboard') {
       fetchData()
       const interval = setInterval(fetchData, 30000)
       return () => clearInterval(interval)
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, currentPage, selectedPlant])
 
   useEffect(() => {
     if ('Notification' in window) {
@@ -79,6 +85,12 @@ function App() {
       }
     }
   }, [])
+
+  useEffect(() => {
+  if (isAuthenticated) {
+    fetchPlants()
+  }
+}, [isAuthenticated])
 
   const requestNotificationPermission = async () => {
     if ('Notification' in window) {
@@ -118,64 +130,91 @@ function App() {
   }
 
   const checkForAlerts = (anomaliesData, statsData) => {
-    const newAlerts = []
-    
-    if (anomaliesData.length > 5) {
-      newAlerts.push({
-        id: Date.now(),
-        type: 'warning',
-        title: 'Yüksek Anomali Sayısı',
-        message: `${anomaliesData.length} anomali tespit edildi`,
-        timestamp: new Date().toISOString()
-      })
-      showNotification(
-        '⚠️ Yüksek Anomali Sayısı',
-        `${anomaliesData.length} anomali tespit edildi`,
-        'warning'
-      )
-    }
-
-    const criticalAnomalies = anomaliesData.filter(a => 
-      Math.abs(a.value) > statsData.max_production * 1.5 || a.value < 0
+  const newAlerts = []
+  
+  // Yüksek anomali - sadece 1 kere göster
+  if (anomaliesData.length > 5 && !shownAlertTypes.has('high_anomaly')) {
+    newAlerts.push({
+      id: Date.now(),
+      type: 'warning',
+      title: 'Yüksek Anomali Sayısı',
+      message: `${anomaliesData.length} anomali tespit edildi`,
+      timestamp: new Date().toISOString()
+    })
+    showNotification(
+      '⚠️ Yüksek Anomali Sayısı',
+      `${anomaliesData.length} anomali tespit edildi`,
+      'warning'
     )
-    
-    if (criticalAnomalies.length > 0) {
-      newAlerts.push({
-        id: Date.now() + 1,
-        type: 'critical',
-        title: '🚨 Kritik Anomali',
-        message: `${criticalAnomalies.length} kritik değer tespit edildi`,
-        timestamp: new Date().toISOString()
-      })
-      showNotification(
-        '🚨 Kritik Anomali',
-        `${criticalAnomalies.length} kritik değer tespit edildi`,
-        'critical'
-      )
-    }
-
-    if (statsData.negatives_count > 0) {
-      newAlerts.push({
-        id: Date.now() + 2,
-        type: 'critical',
-        title: '🚨 Negatif Üretim',
-        message: `${statsData.negatives_count} negatif değer bulundu`,
-        timestamp: new Date().toISOString()
-      })
-    }
-
-    setAlerts(prev => [...newAlerts, ...prev].slice(0, 10))
+    setShownAlertTypes(prev => new Set(prev).add('high_anomaly'))
   }
 
+  const criticalAnomalies = anomaliesData.filter(a => 
+    Math.abs(a.value) > statsData.max_production * 1.5 || a.value < 0
+  )
+  
+  // Kritik anomali - sadece 1 kere göster
+  if (criticalAnomalies.length > 0 && !shownAlertTypes.has('critical_anomaly')) {
+    newAlerts.push({
+      id: Date.now() + 1,
+      type: 'critical',
+      title: '🚨 Kritik Anomali',
+      message: `${criticalAnomalies.length} kritik değer tespit edildi`,
+      timestamp: new Date().toISOString()
+    })
+    showNotification(
+      '🚨 Kritik Anomali',
+      `${criticalAnomalies.length} kritik değer tespit edildi`,
+      'critical'
+    )
+    setShownAlertTypes(prev => new Set(prev).add('critical_anomaly'))
+  }
+
+  // Negatif üretim - sadece 1 kere göster
+  if (statsData.negatives_count > 0 && !shownAlertTypes.has('negative_production')) {
+    newAlerts.push({
+      id: Date.now() + 2,
+      type: 'critical',
+      title: '🚨 Negatif Üretim',
+      message: `${statsData.negatives_count} negatif değer bulundu`,
+      timestamp: new Date().toISOString()
+    })
+    setShownAlertTypes(prev => new Set(prev).add('negative_production'))
+  }
+
+  setAlerts(prev => [...newAlerts, ...prev].slice(0, 10))
+}
+
+  const fetchPlants = async () => {
+  try {
+    const response = await fetch(`${API_URL}/plants`)
+    const data = await response.json()
+    setPlants(data)
+    if (data.length > 0 && !selectedPlant) {
+      setSelectedPlant(data[0].plant_id)
+    }
+  } catch (error) {
+    console.error('Error fetching plants:', error)
+  }
+}
   const fetchData = async () => {
-    setLoading(true)
-    try {
-      const [statsRes, hourlyRes, dailyRes, anomaliesRes] = await Promise.all([
-        fetch(`${API_URL}/stats`),
-        fetch(`${API_URL}/hourly-production?days=7`),
-        fetch(`${API_URL}/daily-production?months=1`),
-        fetch(`${API_URL}/anomalies?limit=10`)
-      ])
+  setLoading(true)
+  try {
+    const [statsRes, hourlyRes, dailyRes, anomaliesRes] = await Promise.all([
+      fetch(`${API_URL}/stats?plant_id=${selectedPlant}`),
+      fetch(`${API_URL}/hourly-production?plant_id=${selectedPlant}&days=7`),
+      fetch(`${API_URL}/daily-production?plant_id=${selectedPlant}&months=1`),
+      fetch(`${API_URL}/anomalies?plant_id=${selectedPlant}&limit=10`)
+    ])
+
+    if (!statsRes.ok) {
+      setStats(null)
+      setHourlyData([])
+      setDailyData([])
+      setAnomalies([])
+      setLoading(false)
+      return
+    }
 
       const [statsData, hourlyData, dailyData, anomaliesData] = await Promise.all([
         statsRes.json(),
@@ -192,6 +231,10 @@ function App() {
       checkForAlerts(anomaliesData, statsData)
     } catch (error) {
       console.error('Error:', error)
+      setStats(null)
+      setHourlyData([])
+      setDailyData([])
+      setAnomalies([])
     } finally {
       setLoading(false)
     }
@@ -205,7 +248,7 @@ function App() {
     return <Login onLogin={handleLogin} />
   }
 
-  if (loading || !stats) {
+  if (loading && currentPage === 'dashboard' && !stats) {
     return (
       <div className="loading">
         <Activity className="spin" size={48} />
@@ -236,6 +279,20 @@ function App() {
               <FileBarChart size={20} />
               Raporlar
             </button>
+            <button
+              className={`nav-btn ${currentPage === 'predictions' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('predictions')}
+            >
+              <TrendingUp size={20} />
+              Tahminler
+              </button>
+            <button 
+              className={`nav-btn ${currentPage === 'upload' ? 'active' : ''}`}
+              onClick={() => setCurrentPage('upload')}
+            >
+              <Upload size={20} />
+              Veri Yükle
+            </button>
           </div>
 
           {currentUser && <span className="user-name">Hoşgeldin, {currentUser.full_name}</span>}
@@ -252,6 +309,24 @@ function App() {
           </button>
         </div>
       </header>
+
+      {/* Plant Selector */}
+      {currentPage === 'dashboard' && (
+        <div className="plant-selector">
+          <label>🏭 Santral Seçin:</label>
+          <select 
+            value={selectedPlant} 
+            onChange={(e) => setSelectedPlant(e.target.value)}
+          >
+            {plants.map(plant => (
+            <option key={plant.plant_id} value={plant.plant_id}>
+           {plant.plant_id} ({plant.record_count} kayıt)
+          </option>
+        ))}
+      </select>
+        </div>
+      )}
+
 
       {currentPage === 'dashboard' ? (
         <>
@@ -284,27 +359,27 @@ function App() {
             <StatCard
               icon={<Activity size={24} />}
               title="Toplam Üretim"
-              value={`${(stats.total_production / 1000).toFixed(1)} MWh`}
+              value={stats ? `${(stats.total_production / 1000).toFixed(1)} MWh` : 'N/A'}
               color="#4ade80"
             />
             <StatCard
               icon={<TrendingUp size={24} />}
               title="Ortalama"
-              value={`${stats.average_production.toFixed(1)} kWh`}
+              value={stats ? `${stats.average_production.toFixed(1)} kWh` : 'N/A'}
               color="#60a5fa"
             />
             <StatCard
               icon={<Zap size={24} />}
               title="Max Üretim"
-              value={`${stats.max_production.toFixed(1)} kWh`}
+              value={stats ? `${stats.max_production.toFixed(1)} kWh` : 'N/A'}
               color="#fbbf24"
             />
             <StatCard
               icon={<AlertTriangle size={24} />}
               title="Anomaliler"
-              value={stats.outliers_count + stats.negatives_count}
+              value={stats ? stats.outliers_count + stats.negatives_count : 0}
               color="#f87171"
-              alert={stats.outliers_count + stats.negatives_count > 5}
+              alert={stats && (stats.outliers_count + stats.negatives_count) > 5}
             />
           </div>
 
@@ -395,8 +470,12 @@ function App() {
             </div>
           )}
         </>
-      ) : (
+      ) : currentPage === 'reports' ? (
         <Reports />
+      ) : currentPage === 'predictions' ? (
+        <Predictions />
+      ) : (
+        <DataUpload />
       )}
     </div>
   )

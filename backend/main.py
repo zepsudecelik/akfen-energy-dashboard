@@ -8,6 +8,14 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 import sys
 import os
+import joblib
+import numpy as np
+import pandas as pd
+import xgboost as xgb
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.preprocessing import StandardScaler
+from datetime import datetime, timedelta
 
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -28,19 +36,25 @@ app = FastAPI(
 # CORS - React frontend için
 app.add_middleware(
     CORSMiddleware,
-   allow_origins=[
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://172.20.10.3:5173",
-    "*"  # Tüm originler
-],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://172.20.10.3:5173",
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
 security = HTTPBearer()
+
+# Model dosya yolları
+MODEL_PATH = "models/xgboost_model.json"
+SCALER_PATH = "models/scaler.pkl"
+
+# Models klasörünü oluştur
+os.makedirs("models", exist_ok=True)
 
 
 # =========================
@@ -123,7 +137,7 @@ def login(user: UserLogin):
 
 
 @app.get("/api/auth/me", response_model=User)
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+def get_current_user_info(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Get current logged in user"""
     token = credentials.credentials
     token_data = verify_token(token)
@@ -317,11 +331,10 @@ def get_anomalies(
     finally:
         conn.close()
 
+
 # =========================
 # REPORTING ENDPOINTS
 # =========================
-
-from datetime import datetime, timedelta
 
 @app.get("/api/reports/summary")
 def get_report_summary(
@@ -330,9 +343,7 @@ def get_report_summary(
     end_date: Optional[str] = Query(None),
     period: str = Query("weekly", description="weekly, monthly, or custom")
 ):
-    """
-    Generate comprehensive report summary
-    """
+    """Generate comprehensive report summary"""
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -391,7 +402,7 @@ def get_report_summary(
                     "data_points": int(r[4])
                 })
             
-            # Hourly pattern (average by hour of day)
+            # Hourly pattern
             cur.execute("""
                 SELECT 
                     EXTRACT(HOUR FROM timestamp) as hour,
@@ -462,9 +473,7 @@ def get_comparison_report(
     period2_start: str = Query(..., description="Period 2 start date"),
     period2_end: str = Query(..., description="Period 2 end date")
 ):
-    """
-    Compare two time periods
-    """
+    """Compare two time periods"""
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -532,13 +541,11 @@ def get_performance_metrics(
     plant_id: str = "AKFEN_MAHSUP",
     days: int = Query(default=30, le=365)
 ):
-    """
-    Get performance metrics and trends
-    """
+    """Get performance metrics and trends"""
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            # Weekly performance over time
+            # Weekly performance
             cur.execute("""
                 SELECT 
                     DATE_TRUNC('week', timestamp) as week,
@@ -561,7 +568,7 @@ def get_performance_metrics(
                     "data_points": int(row[3])
                 })
             
-            # Capacity factor (assuming 1 MW capacity)
+            # Capacity factor
             cur.execute("""
                 SELECT 
                     SUM(value) as total_production,
@@ -575,8 +582,7 @@ def get_performance_metrics(
             total_production = float(row[0] or 0)
             days_operated = int(row[1])
             
-            # Assuming 1000 kW capacity
-            theoretical_max = 1000 * 24 * days_operated  # kWh
+            theoretical_max = 1000 * 24 * days_operated
             capacity_factor = (total_production / theoretical_max * 100) if theoretical_max > 0 else 0
             
             return {
@@ -592,6 +598,228 @@ def get_performance_metrics(
     finally:
         conn.close()
 
+
+# =========================
+# MACHINE LEARNING ENDPOINTS
+# =========================
+
+@app.post("/api/ml/train")
+async def train_model(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """XGBoost modelini eğit"""
+    # Token verify
+    token = credentials.credentials
+    token_data = verify_token(token)
+    if not token_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            # Veritabanından veri çek
+            cur.execute("""
+                SELECT 
+                    EXTRACT(HOUR FROM timestamp) as hour,
+                    EXTRACT(DOW FROM timestamp) as day_of_week,
+                    EXTRACT(MONTH FROM timestamp) as month,
+                    value,
+                    LAG(value, 1) OVER (ORDER BY timestamp) as lag_1,
+                    LAG(value, 24) OVER (ORDER BY timestamp) as lag_24
+                FROM measurements
+                WHERE quality_flag = 'normal'
+                ORDER BY timestamp
+            """)
+            
+            rows = cur.fetchall()
+            
+            if len(rows) < 100:
+                raise HTTPException(status_code=400, detail="Yeterli veri yok (min 100 kayıt)")
+            
+            # DataFrame oluştur
+            df = pd.DataFrame(rows, columns=['hour', 'day_of_week', 'month', 'value', 'lag_1', 'lag_24'])
+            df = df.dropna()
+            
+            # Feature'lar ve target
+            X = df[['hour', 'day_of_week', 'month', 'lag_1', 'lag_24']]
+            y = df['value']
+            
+            # Train/test split
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42
+            )
+            
+            # Scaling
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_test_scaled = scaler.transform(X_test)
+            
+            # XGBoost model
+            model = xgb.XGBRegressor(
+                n_estimators=100,
+                learning_rate=0.1,
+                max_depth=5,
+                random_state=42
+            )
+            
+            model.fit(X_train_scaled, y_train)
+            
+            # Predictions
+            y_pred = model.predict(X_test_scaled)
+            
+            # Metrics
+            mae = mean_absolute_error(y_test, y_pred)
+            mse = mean_squared_error(y_test, y_pred)
+            rmse = np.sqrt(mse)
+            r2 = r2_score(y_test, y_pred)
+            
+            # Model kaydet
+            model.save_model(MODEL_PATH)
+            joblib.dump(scaler, SCALER_PATH)
+            
+            return {
+                "status": "success",
+                "metrics": {
+                    "mae": float(mae),
+                    "mse": float(mse),
+                    "rmse": float(rmse),
+                    "r2": float(r2)
+                },
+                "training_samples": len(X_train),
+                "test_samples": len(X_test),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.post("/api/ml/predict")
+async def predict_energy(
+    hours_ahead: int = 24,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Enerji üretim tahmini yap"""
+    # Token verify
+    token = credentials.credentials
+    token_data = verify_token(token)
+    if not token_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    conn = get_conn()
+    try:
+        # Model yüklü mü kontrol et
+        if not os.path.exists(MODEL_PATH):
+            raise HTTPException(status_code=404, detail="Model henüz eğitilmemiş")
+        
+        # Model ve scaler yükle
+        model = xgb.XGBRegressor()
+        model.load_model(MODEL_PATH)
+        scaler = joblib.load(SCALER_PATH)
+        
+        with conn.cursor() as cur:
+            # Son veriyi çek
+            cur.execute("""
+                SELECT value, timestamp
+                FROM measurements
+                WHERE quality_flag = 'normal'
+                ORDER BY timestamp DESC
+                LIMIT 24
+            """)
+            
+            rows = cur.fetchall()
+            
+            if len(rows) < 24:
+                raise HTTPException(status_code=400, detail="Yeterli geçmiş veri yok")
+            
+            df = pd.DataFrame(rows, columns=['value', 'timestamp'])
+            
+            predictions = []
+            now = datetime.now()
+            
+            for i in range(hours_ahead):
+                future_time = now + timedelta(hours=i)
+                
+                features = pd.DataFrame({
+                    'hour': [future_time.hour],
+                    'day_of_week': [future_time.weekday()],
+                    'month': [future_time.month],
+                    'lag_1': [df['value'].iloc[0]],
+                    'lag_24': [df['value'].iloc[23] if len(df) >= 24 else df['value'].iloc[-1]]
+                })
+                
+                features_scaled = scaler.transform(features)
+                prediction = model.predict(features_scaled)[0]
+                
+                predictions.append({
+                    "timestamp": future_time.isoformat(),
+                    "predicted_value": float(max(0, prediction))
+                })
+            
+            return {
+                "status": "success",
+                "predictions": predictions,
+                "hours_ahead": hours_ahead
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        conn.close()
+
+
+@app.get("/api/ml/metrics")
+async def get_model_metrics(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Model metriklerini getir"""
+    # Token verify
+    token = credentials.credentials
+    token_data = verify_token(token)
+    if not token_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    try:
+        if not os.path.exists(MODEL_PATH):
+            return {"status": "no_model", "message": "Model henüz eğitilmemiş"}
+        
+        # Model dosya bilgisi
+        model_info = os.stat(MODEL_PATH)
+        
+        return {
+            "status": "trained",
+            "model_size": model_info.st_size,
+            "last_trained": datetime.fromtimestamp(model_info.st_mtime).isoformat(),
+            "model_type": "XGBoost"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)  # 0.0.0.0 = tüm network
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+
+@app.get("/api/plants")
+def get_plants():
+    """Tüm santral listesini getir"""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT plant_id, COUNT(*) as record_count
+                FROM measurements
+                GROUP BY plant_id
+                ORDER BY plant_id
+            """)
+            
+            rows = cur.fetchall()
+            
+            return [
+                {
+                    "plant_id": row[0],
+                    "record_count": int(row[1])
+                }
+                for row in rows
+            ]
+    finally:
+        conn.close()

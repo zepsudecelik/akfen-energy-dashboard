@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer
@@ -23,33 +23,7 @@ function Reports() {
     end: ''
   })
 
-  const fetchReport = async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ period })
-      if (period === 'custom' && customDates.start && customDates.end) {
-        params.append('start_date', customDates.start)
-        params.append('end_date', customDates.end)
-      }
-
-      const response = await fetch(`${API_URL}/reports/summary?${params}`)
-      const data = await response.json()
-      setReportData(data)
-
-      // Sadece haftalık için comparison getir
-      if (period === 'weekly' && data.summary.total_records > 0) {
-        fetchComparison()
-      } else {
-        setComparisonData(null)
-      }
-    } catch (error) {
-      console.error('Error fetching report:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchComparison = async () => {
+  const fetchComparison = useCallback(async () => {
     const now = new Date()
     const thisWeekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     const lastWeekStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
@@ -69,14 +43,39 @@ function Reports() {
     } catch (error) {
       console.error('Error fetching comparison:', error)
     }
-  }
+  }, [])
+
+  const fetchReport = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ period })
+      if (period === 'custom' && customDates.start && customDates.end) {
+        params.append('start_date', customDates.start)
+        params.append('end_date', customDates.end)
+      }
+
+      const response = await fetch(`${API_URL}/reports/summary?${params}`)
+      const data = await response.json()
+      setReportData(data)
+
+      // SADECE haftalık için comparison getir
+      if (period === 'weekly' && data.summary.total_records > 0) {
+        fetchComparison()
+      } else {
+        setComparisonData(null)
+      }
+    } catch (error) {
+      console.error('Error fetching report:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [period, customDates, fetchComparison])
 
   useEffect(() => {
-    // Sadece haftalık ve aylık için otomatik fetch
     if (period !== 'custom') {
       fetchReport()
     }
-  }, [period])
+  }, [period, fetchReport])
 
   const handleCustomDateSubmit = () => {
     if (customDates.start && customDates.end) {
@@ -87,7 +86,6 @@ function Reports() {
   const downloadReport = () => {
     const doc = new jsPDF()
     
-    // Başlık
     doc.setFontSize(20)
     doc.text('Akfen Enerji Uretim Raporu', 14, 20)
     
@@ -96,7 +94,6 @@ function Reports() {
     doc.text(`Donem: ${periodText}`, 14, 30)
     doc.text(`Tarih Araligi: ${new Date(reportData.period.start).toLocaleDateString('tr-TR')} - ${new Date(reportData.period.end).toLocaleDateString('tr-TR')}`, 14, 37)
     
-    // Özet İstatistikler
     doc.setFontSize(14)
     doc.text('Ozet Istatistikler', 14, 50)
     
@@ -106,7 +103,6 @@ function Reports() {
     doc.text(`Veri Kalitesi: ${reportData.summary.data_quality.toFixed(1)}%`, 14, 74)
     doc.text(`En Yuksek Gun: ${(reportData.peak_day.production / 1000).toFixed(1)} MWh`, 14, 81)
     
-    // Günlük Detay Tablosu
     doc.setFontSize(14)
     doc.text('Gunluk Uretim Detaylari', 14, 95)
     
@@ -127,7 +123,6 @@ function Reports() {
       headStyles: { fillColor: [74, 222, 128] }
     })
     
-    // PDF'i indir
     doc.save(`akfen-rapor-${period}-${new Date().toISOString().split('T')[0]}.pdf`)
   }
 
