@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer
@@ -15,6 +15,8 @@ const API_URL = 'http://localhost:8000/api';
 
 function Reports() {
   const [period, setPeriod] = useState('weekly')
+  const [selectedPlant, setSelectedPlant] = useState('YAYSUN_LISANSLI')
+  const [plants, setPlants] = useState([])
   const [reportData, setReportData] = useState(null)
   const [comparisonData, setComparisonData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -23,7 +25,7 @@ function Reports() {
     end: ''
   })
 
-  const fetchComparison = useCallback(async () => {
+  const fetchComparison = async () => {
     const now = new Date()
     const thisWeekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     const lastWeekStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000)
@@ -34,7 +36,8 @@ function Reports() {
         period1_start: lastWeekStart.toISOString(),
         period1_end: lastWeekEnd.toISOString(),
         period2_start: thisWeekStart.toISOString(),
-        period2_end: now.toISOString()
+        period2_end: now.toISOString(),
+        plant_id: selectedPlant
       })
 
       const response = await fetch(`${API_URL}/reports/comparison?${params}`)
@@ -43,22 +46,31 @@ function Reports() {
     } catch (error) {
       console.error('Error fetching comparison:', error)
     }
-  }, [])
+  }
 
-  const fetchReport = useCallback(async () => {
+  const fetchReport = async () => {
     setLoading(true)
+    console.log('🔄 fetchReport çağrıldı, period:', period)
     try {
-      const params = new URLSearchParams({ period })
+      const params = new URLSearchParams({ 
+        period,
+        plant_id: selectedPlant
+      })
+      
       if (period === 'custom' && customDates.start && customDates.end) {
         params.append('start_date', customDates.start)
         params.append('end_date', customDates.end)
+        console.log('Sending params:', params.toString())
       }
 
+      console.log('Fetching:', `${API_URL}/reports/summary?${params}`)
       const response = await fetch(`${API_URL}/reports/summary?${params}`)
+      console.log('Response status:', response.status)
       const data = await response.json()
+      console.log('Response data:', data)
+      console.log('Total records:', data?.summary?.total_records)
       setReportData(data)
 
-      // SADECE haftalık için comparison getir
       if (period === 'weekly' && data.summary.total_records > 0) {
         fetchComparison()
       } else {
@@ -69,17 +81,37 @@ function Reports() {
     } finally {
       setLoading(false)
     }
-  }, [period, customDates, fetchComparison])
+  }
 
   useEffect(() => {
-    if (period !== 'custom') {
+    fetchPlants()
+  }, [])
+
+  useEffect(() => {
+    if (period !== 'custom' && selectedPlant) {
       fetchReport()
     }
-  }, [period, fetchReport])
+  }, [period, selectedPlant])
+
+  const fetchPlants = async () => {
+    try {
+      const response = await fetch(`${API_URL}/plants`)
+      const data = await response.json()
+      setPlants(data)
+    } catch (error) {
+      console.error('Error fetching plants:', error)
+    }
+  }
 
   const handleCustomDateSubmit = () => {
     if (customDates.start && customDates.end) {
+      console.log('📅 Fetching custom report...')
+      console.log('Start:', customDates.start)
+      console.log('End:', customDates.end)
+      setLoading(true)
       fetchReport()
+    } else {
+      alert('Lütfen başlangıç ve bitiş tarihlerini seçin!')
     }
   }
 
@@ -157,6 +189,21 @@ function Reports() {
         </button>
       </div>
 
+      {/* Plant Selector */}
+      <div className="plant-selector">
+        <label>🏭 Santral Seçin:</label>
+        <select 
+          value={selectedPlant} 
+          onChange={(e) => setSelectedPlant(e.target.value)}
+        >
+          {plants.map(plant => (
+            <option key={plant.plant_id} value={plant.plant_id}>
+              {plant.plant_id} ({plant.record_count} kayıt)
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div className="period-selector">
         <button 
           className={period === 'weekly' ? 'active' : ''}
@@ -203,7 +250,7 @@ function Reports() {
           <BarChart3 size={48} style={{margin: '0 auto 1rem', color: '#64748b'}} />
           <p style={{fontSize: '1.25rem', marginBottom: '0.5rem'}}>Bu tarih aralığında veri bulunamadı</p>
           <p style={{color: '#64748b', fontSize: '0.875rem'}}>
-            Lütfen farklı bir tarih aralığı seçin (örn: 2025-04-01 / 2025-04-30)
+            Lütfen farklı bir tarih aralığı seçin (örn: 2020-01-01 / 2020-01-30)
           </p>
         </div>
       )}

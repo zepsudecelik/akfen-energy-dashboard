@@ -1,7 +1,8 @@
 """
 FastAPI Backend for Akfen Energy Dashboard
 """
-
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -16,6 +17,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime, timedelta
+import requests
 
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -55,6 +57,10 @@ SCALER_PATH = "models/scaler.pkl"
 
 # Models klasörünü oluştur
 os.makedirs("models", exist_ok=True)
+
+# OpenWeatherMap API
+WEATHER_API_KEY = "1189b3732971d5dc40f7e5aec1938e22"
+WEATHER_API_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 
 # =========================
@@ -325,6 +331,32 @@ def get_anomalies(
                     "value": float(row[1]),
                     "quality_flag": row[2],
                     "deviation": float(row[1] - avg_value) if avg_value else None
+                }
+                for row in rows
+            ]
+    finally:
+        conn.close()
+
+
+@app.get("/api/plants")
+def get_plants():
+    """Tüm santral listesini getir"""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT plant_id, COUNT(*) as record_count
+                FROM measurements
+                GROUP BY plant_id
+                ORDER BY plant_id
+            """)
+            
+            rows = cur.fetchall()
+            
+            return [
+                {
+                    "plant_id": row[0],
+                    "record_count": int(row[1])
                 }
                 for row in rows
             ]
@@ -795,31 +827,134 @@ async def get_model_metrics(credentials: HTTPAuthorizationCredentials = Depends(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+# =========================
+# WEATHER ENDPOINTS
+# =========================
 
-@app.get("/api/plants")
-def get_plants():
-    """Tüm santral listesini getir"""
+@app.get("/api/weather")
+async def get_weather(city: str = "Ankara"):
+    """Hava durumu bilgisini getir"""
+    try:
+        params = {
+            "q": city,
+            "appid": WEATHER_API_KEY,
+            "units": "metric",  # Celsius için
+            "lang": "tr"  # Türkçe açıklamalar
+        }
+        
+        response = requests.get(WEATHER_API_URL, params=params)
+        
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Hava durumu alınamadı")
+        
+        data = response.json()
+        
+        return {
+            "city": data["name"],
+            "temperature": round(data["main"]["temp"], 1),
+            "feels_like": round(data["main"]["feels_like"], 1),
+            "humidity": data["main"]["humidity"],
+            "description": data["weather"][0]["description"],
+            "icon": data["weather"][0]["icon"],
+            "wind_speed": data["wind"]["speed"],
+            "clouds": data["clouds"]["all"],
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =========================
+# SCHEDULED TASKS
+# =========================
+
+def save_weather_to_db():
+    """Her gün otomatik olarak hava durumu verilerini database'e kaydet"""
+    print(f"🌤️ [{datetime.now()}] Otomatik hava durumu kaydı başladı...")
+    
+    plant_cities = {
+        'YAYSUN_LISANSLI': 'Kayseri',
+        'MT_DOGAL': 'Gaziantep',
+        'IOTA_M._FIRINCI': 'Adana',
+        'O._ENGIL208': 'Konya',
+        'O._ERCIS': 'Van',
+        'PSI_ENGIL207': 'Konya',
+        'AKFEN_MAHSUP': 'Ankara'
+    }
+    
     conn = get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT DISTINCT plant_id, COUNT(*) as record_count
-                FROM measurements
-                GROUP BY plant_id
-                ORDER BY plant_id
-            """)
+            saved_count = 0
             
-            rows = cur.fetchall()
+            for plant_id, city in plant_cities.items():
+                try:
+                    params = {
+                        "q": city,
+                        "appid": WEATHER_API_KEY,
+                        "units": "metric",
+                        "lang": "tr"
+                    }
+                    
+                    response = requests.get(WEATHER_API_URL, params=params)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        
+                        cur.execute("""
+                            INSERT INTO weather_data 
+                            (timestamp, plant_id, city, temperature, feels_like, 
+                             humidity, description, wind_speed, clouds, created_at)
+                            VALUES (NOW(), %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                            ON CONFLICT DO NOTHING
+                        """, (
+                            plant_id,
+                            city,
+                            data["main"]["temp"],
+                            data["main"]["feels_like"],
+                            data["main"]["humidity"],
+                            data["weather"][0]["description"],
+                            data["wind"]["speed"],
+                            data["clouds"]["all"]
+                        ))
+                        
+                        saved_count += 1
+                        print(f"  ✅ {plant_id} ({city}): {data['main']['temp']}°C")
+                    
+                except Exception as e:
+                    print(f"  ❌ {plant_id} ({city}) hata: {str(e)}")
+                    continue
             
-            return [
-                {
-                    "plant_id": row[0],
-                    "record_count": int(row[1])
-                }
-                for row in rows
-            ]
+            conn.commit()
+            print(f"✅ Toplam {saved_count}/{len(plant_cities)} santral kaydedildi!\n")
+            
+    except Exception as e:
+        print(f"❌ Genel hata: {str(e)}")
     finally:
         conn.close()
+
+
+# Scheduler başlat
+scheduler = BackgroundScheduler()
+scheduler.add_job(
+    save_weather_to_db,
+    trigger=CronTrigger(hour=9, minute=0),
+    id='weather_sync',
+    name='Günlük Hava Durumu Senkronizasyonu',
+    replace_existing=True
+)
+
+# İlk test için 5 saniye sonra çalıştır
+scheduler.add_job(
+    save_weather_to_db,
+    'date',
+    run_date=datetime.now() + timedelta(seconds=5),
+    id='weather_sync_initial'
+)
+
+scheduler.start()
+print("🤖 Scheduler başlatıldı! Her gün 09:00'da hava durumu kaydedilecek.")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

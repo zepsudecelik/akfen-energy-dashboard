@@ -7,7 +7,7 @@ from psycopg2.extras import execute_values
 PG_HOST = os.getenv("PG_HOST", "localhost")
 PG_PORT = int(os.getenv("PG_PORT", "5432"))
 PG_DB = os.getenv("PG_DB", "akfen_db")
-PG_USER = os.getenv("PG_USER", "akfen_user")
+PG_USER = os.getenv("PG_USER", "zeynepsudecelik")
 PG_PASSWORD = os.getenv("PG_PASSWORD", "akfen_pass")
 
 

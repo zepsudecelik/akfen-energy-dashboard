@@ -9,6 +9,8 @@ import Login from './login.jsx'
 import Reports from './Reports.jsx'
 import DataUpload from './DataUpload.jsx'
 import Predictions from './Predictions.jsx'
+import WeatherWidget from './components/WeatherWidget'
+import './components/WeatherWidget.css'
 
 const API_URL = 'http://localhost:8000/api';
 
@@ -312,20 +314,25 @@ function App() {
 
       {/* Plant Selector */}
       {currentPage === 'dashboard' && (
-        <div className="plant-selector">
+        <>
+          <div className="plant-selector">
           <label>🏭 Santral Seçin:</label>
           <select 
-            value={selectedPlant} 
+           value={selectedPlant} 
             onChange={(e) => setSelectedPlant(e.target.value)}
-          >
-            {plants.map(plant => (
+        >
+          {plants.map(plant => (
             <option key={plant.plant_id} value={plant.plant_id}>
-           {plant.plant_id} ({plant.record_count} kayıt)
-          </option>
-        ))}
-      </select>
+              {plant.plant_id} ({plant.record_count} kayıt)
+            </option>
+           ))}
+          </select>
         </div>
-      )}
+    
+        {/* Hava Durumu Widget */}
+        <WeatherWidget plantId={selectedPlant} />
+      </>
+    )}
 
 
       {currentPage === 'dashboard' ? (
